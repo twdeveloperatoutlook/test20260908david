@@ -6,7 +6,7 @@ on:
       webapp_name:
         description: "Azure Web App Name"
         required: true
-        default: "testweb2026cht00"
+        default: "testweb2026cht03"
 
       slot_name:
         description: "Deployment Slot"
