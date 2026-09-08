@@ -1,0 +1,189 @@
+name: AI UI Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ui-test:
+    runs-on: ubuntu-latest
+
+    env:
+      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install GitHub Copilot CLI
+        run: |
+          set -e
+
+          echo "===== 1. 安裝 GitHub Copilot CLI ====="
+
+          npm install -g @github/copilot
+
+          copilot --version
+
+      - name: Check Docker
+        run: |
+          set -e
+
+          echo "===== 2. 確認 Docker ====="
+
+          docker --version
+
+          echo "Pull Playwright MCP image..."
+
+          docker pull mcr.microsoft.com/playwright/mcp
+
+      - name: Configure Playwright MCP
+        run: |
+          set -e
+
+          echo "===== 3. 設定 Playwright MCP ====="
+
+          # 避免 Runner 上已經有同名設定
+          copilot mcp remove playwright 2>/dev/null || true
+
+          copilot mcp add playwright -- \
+            docker run \
+            -i \
+            --rm \
+            --init \
+            --pull=always \
+            mcr.microsoft.com/playwright/mcp
+
+          echo ""
+          echo "===== 4. 確認 MCP 是否真的載入 ====="
+
+          copilot mcp list
+
+          echo ""
+          echo "===== Playwright MCP Details ====="
+
+          copilot mcp get playwright
+
+      - name: Run Copilot Playwright UI Test
+        shell: bash
+        run: |
+          echo ""
+          echo "===== 5. 開始執行 UI 自動化測試 ====="
+
+          set +e
+
+          RESULT=$(copilot \
+            -p "
+          你是一位資深軟體測試工程師。
+
+          你的任務只能使用 Playwright MCP 操作真正的瀏覽器，
+          不得只用 HTTP request、curl、web fetch 或推測結果。
+
+          測試網站：
+
+          https://test20260907-test-ddh8gegyangtdwak.canadacentral-01.azurewebsites.net/
+
+          你必須實際完成以下瀏覽器操作：
+
+          1. 使用 Playwright MCP 的 browser_navigate 開啟：
+             https://test20260907-test-ddh8gegyangtdwak.canadacentral-01.azurewebsites.net/
+
+          2. 取得頁面的 accessibility snapshot。
+
+          3. 找到「身高」輸入欄位。
+
+          4. 在身高輸入：
+             170
+
+          5. 找到「體重」輸入欄位。
+
+          6. 在體重輸入：
+             70
+
+          7. 找到 BMI 計算按鈕並點擊。
+
+          8. 等待頁面顯示計算結果。
+
+          9. 實際檢查頁面是否出現：
+             24.22
+
+          預期結果：
+
+          身高 = 170
+          體重 = 70
+
+          頁面必須顯示：
+
+          24.22
+
+
+          重要規則：
+
+          - 必須使用 playwright MCP。
+          - 必須實際開啟瀏覽器。
+          - 必須實際輸入 170 與 70。
+          - 必須實際點擊計算按鈕。
+          - 不允許只讀 HTML 推論結果。
+          - 不允許用 curl 取代瀏覽器操作。
+          - 不允許修改任何程式碼。
+          - 不允許修改 repository。
+          - 不允許修正網站。
+
+          如果 Playwright MCP 無法使用，
+          測試直接視為 FAIL。
+
+
+          請輸出：
+
+          身高輸入：
+          體重輸入：
+          實際看到的結果：
+          預期結果：
+          測試結果：PASS 或 FAIL
+
+          最後一行必須且只能輸出以下其中一種：
+
+          TEST_RESULT=PASS
+
+          或
+
+          TEST_RESULT=FAIL
+          " \
+            --allow-all-tools \
+            --allow-url='test20260907-test-ddh8gegyangtdwak.canadacentral-01.azurewebsites.net' \
+            2>&1)
+
+          COPILOT_EXIT_CODE=$?
+
+          set -e
+
+          echo ""
+          echo "========== Copilot UI Test Result =========="
+          echo "$RESULT"
+          echo "============================================"
+          echo ""
+
+          if [ $COPILOT_EXIT_CODE -ne 0 ]; then
+              echo "❌ Copilot CLI 執行失敗"
+              exit 1
+          fi
+
+          FINAL_RESULT=$(echo "$RESULT" |
+            grep 'TEST_RESULT=' |
+            tail -n 1 |
+            tr -d '\r' |
+            xargs)
+
+          echo "Detected result: $FINAL_RESULT"
+
+          if [ "$FINAL_RESULT" = "TEST_RESULT=PASS" ]; then
+              echo "✅ UI 自動化測試通過"
+              exit 0
+          else
+              echo "❌ UI 自動化測試失敗"
+              exit 1
+          fi
